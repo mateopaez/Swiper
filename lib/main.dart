@@ -3,7 +3,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'dart:typed_data';
 
 void main() {
-  runApp(PhotoCleanerApp());
+  runApp(const PhotoCleanerApp());
 }
 
 class PhotoCleanerApp extends StatelessWidget {
@@ -13,7 +13,7 @@ class PhotoCleanerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Photo Cleaner',
-      home: PhotoGalleryScreen(),
+      home: const PhotoGalleryScreen(),
     );
   }
 }
@@ -27,6 +27,7 @@ class PhotoGalleryScreen extends StatefulWidget {
 
 class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
   List<AssetEntity> _photos = [];
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -37,12 +38,11 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
   Future<void> _requestPermissionAndLoadPhotos() async {
     final PermissionState permission = await PhotoManager.requestPermissionExtend();
     if (permission.isAuth) {
-      // Load photos
-      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
+      final albums = await PhotoManager.getAssetPathList(
         type: RequestType.image,
         onlyAll: true,
       );
-      List<AssetEntity> photos = await albums.first.getAssetListPaged(page: 0, size: 100);
+      final photos = await albums.first.getAssetListPaged(page: 0, size: 100);
       setState(() {
         _photos = photos;
       });
@@ -51,33 +51,84 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
     }
   }
 
+  Future<void> _deletePhoto(AssetEntity entity) async {
+    await PhotoManager.editor.deleteWithIds([entity.id]);
+  }
+
+  void _handleSwipe(DismissDirection direction) async {
+    if (_currentIndex >= _photos.length) return;
+
+    final currentPhoto = _photos[_currentIndex];
+
+    if (direction == DismissDirection.endToStart) {
+      // Swipe left = delete
+      await _deletePhoto(currentPhoto);
+    } else if (direction == DismissDirection.startToEnd) {
+      // Swipe right = keep
+      // Do nothing
+    }
+
+    setState(() {
+      _currentIndex++;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_photos.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Your Photos")),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_currentIndex >= _photos.length) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Your Photos")),
+        body: const Center(child: Text("You're done! No more photos.")),
+      );
+    }
+
+    final currentPhoto = _photos[_currentIndex];
+
     return Scaffold(
-      appBar: AppBar(title: Text("Your Photos")),
-      body: _photos.isEmpty
-          ? Center(child: CircularProgressIndicator())
-          : GridView.builder(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3),
-              itemCount: _photos.length,
-              itemBuilder: (_, index) {
-                return FutureBuilder<Uint8List?>(
-                  future: _photos[index].thumbnailDataWithSize(
-                    ThumbnailSize(200, 200),
-                  ),
-                  builder: (_, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Container();
-                    }
-                    if (snapshot.hasData && snapshot.data != null) {
-                      return Image.memory(snapshot.data!, fit: BoxFit.cover);
-                    } else {
-                      return Container();
-                    }
-                  },
-                );
-              },
+      appBar: AppBar(title: const Text("Swipe to Clean")),
+      body: FutureBuilder<Uint8List?>(
+        future: currentPhoto.originBytes,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          return Dismissible(
+            key: UniqueKey(),
+            direction: DismissDirection.horizontal,
+            onDismissed: _handleSwipe,
+            background: Container(
+              color: Colors.green,
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 32),
+              child: const Icon(Icons.check, color: Colors.white, size: 40),
             ),
+            secondaryBackground: Container(
+              color: Colors.red,
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 32),
+              child: const Icon(Icons.delete, color: Colors.white, size: 40),
+            ),
+            child: Container(
+              margin: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                image: DecorationImage(
+                  image: MemoryImage(snapshot.data!),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
