@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:swiper/pages/trash_bin.dart';
 import 'dart:typed_data';
 
 void main() {
@@ -26,6 +27,7 @@ class PhotoGalleryScreen extends StatefulWidget {
 }
 
 class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
+  final List<AssetEntity> _trashedPhotos = [];
   List<AssetEntity> _photos = [];
   int _currentIndex = 0;
 
@@ -35,6 +37,7 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
     _requestPermissionAndLoadPhotos();
   }
 
+  // Request permission and load photos from the gallery
   Future<void> _requestPermissionAndLoadPhotos() async {
     final PermissionState permission = await PhotoManager.requestPermissionExtend();
     if (permission.isAuth) {
@@ -51,18 +54,20 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
     }
   }
 
+  // Function to delete a photo from the gallery
   Future<void> _deletePhoto(AssetEntity entity) async {
     await PhotoManager.editor.deleteWithIds([entity.id]);
   }
 
+  // Handle swipe actions
   void _handleSwipe(DismissDirection direction) async {
     if (_currentIndex >= _photos.length) return;
 
     final currentPhoto = _photos[_currentIndex];
 
     if (direction == DismissDirection.endToStart) {
-      // Swipe left = delete
-      await _deletePhoto(currentPhoto);
+      // Swipe left = move to trash bin
+      _trashedPhotos.add(currentPhoto);
     } else if (direction == DismissDirection.startToEnd) {
       // Swipe right = keep
       // Do nothing
@@ -73,7 +78,17 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
     });
   }
 
+  // Function to empty the trash bin
+  void _emptyTrashBin() {
+    setState(() {
+      _trashedPhotos.clear();
+    });
+  }
+
+
+
   @override
+  // Build the UI for the photo gallery
   Widget build(BuildContext context) {
     if (_photos.isEmpty) {
       return Scaffold(
@@ -92,7 +107,25 @@ class _PhotoGalleryScreenState extends State<PhotoGalleryScreen> {
     final currentPhoto = _photos[_currentIndex];
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Swipe to Clean")),
+      appBar: AppBar(
+        title: const Text("Swipe to Clean"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TrashBinScreen(
+                    trashedPhotos: _trashedPhotos,
+                    onEmptyTrash: _emptyTrashBin
+                  ),
+                ),
+              );
+            },
+          )
+        ],
+      ),
       body: FutureBuilder<Uint8List?>(
         future: currentPhoto.originBytes,
         builder: (context, snapshot) {
